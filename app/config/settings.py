@@ -11,6 +11,7 @@ class Settings:
     database_user = os.getenv("DATABASE_USER")
     database_password = os.getenv("DATABASE_PASSWORD")
     database_name = os.getenv("DATABASE_NAME")
+    bucket_name = os.getenv("BUCKET_NAME")
 
 
 settings = Settings()
