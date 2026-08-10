@@ -1,13 +1,7 @@
 from fastapi import FastAPI
 
+from app.routes.job import router as job_router
+
 app = FastAPI(title="Candidate Processor BTG")
 
-
-@app.get("/")
-def home():
-    return {"mensagem:": "Hello word"}
-
-
-@app.post("/jobs")
-def upload():
-    return {"message": "upload"}
+app.include_router(job_router)
