@@ -20,3 +20,8 @@ class JobResponse(BaseModel):
     approved_candidates: int
     created_at: datetime
     completed_at: datetime | None
+
+class JobCreateResponse(BaseModel):
+    id: UUID
+    filename: str
+    upload_url: str
