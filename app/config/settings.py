@@ -12,6 +12,8 @@ class Settings:
     database_password = os.getenv("DATABASE_PASSWORD")
     database_name = os.getenv("DATABASE_NAME")
     bucket_name = os.getenv("BUCKET_NAME")
+    aws_profile = os.getenv("AWS_PROFILE")
+    aws_region = os.getenv("AWS_REGION")
 
 
 settings = Settings()
