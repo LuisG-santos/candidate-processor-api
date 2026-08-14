@@ -2,6 +2,7 @@ from logging.config import fileConfig
 
 from alembic import context
 from app.database.engine import engine
+from app.models import CandidatesModel, JobModel
 from app.models.base import Base
 
 # this is the Alembic Config object, which provides
@@ -43,6 +44,7 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        compare_server_default=True
     )
 
     with context.begin_transaction():
