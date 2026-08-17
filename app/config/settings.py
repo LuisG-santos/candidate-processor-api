@@ -14,6 +14,7 @@ class Settings:
     bucket_name = os.getenv("BUCKET_NAME")
     aws_profile = os.getenv("AWS_PROFILE")
     aws_region = os.getenv("AWS_REGION")
+    front_url = os.getenv("FRONT_URL")
 
 
 settings = Settings()
