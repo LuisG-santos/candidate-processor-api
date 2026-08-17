@@ -1,26 +1,26 @@
 # Candidate Processor API
 
-Uma API robusta para processamento e gerenciamento de candidatos em processos de recrutamento. Desenvolvida com **FastAPI**, integrada com **AWS** (S3 e SQS) e utilizando **PostgreSQL** para persistência de dados.
+Uma API para processamento e gerenciamento de candidatos em processos de recrutamento. Desenvolvida com **FastAPI**, integrada com **AWS** (S3 e SQS) e utilizando **RDS/PostgreSQL** para persistência de dados.
 
-## 🚀 Características
+## Características
 
-- ✅ **API RESTful** completa para gestão de vagas e candidatos
-- ✅ **Integração AWS S3** para armazenamento de documentos
-- ✅ **Fila de Processamento (SQS)** para processamento assíncrono
-- ✅ **PostgreSQL** como banco de dados
-- ✅ **CORS** configurado para aplicações frontend
-- ✅ **Migrations** com Alembic
-- ✅ **Type Hints** com Pydantic para validação de dados
-- ✅ **UUID** para identificadores únicos
+-  **API RESTful** completa para gestão de vagas e candidatos
+-  **Integração AWS S3** para armazenamento de documentos
+-  **Fila de Processamento (SQS)** para processamento assíncrono
+-  **RDS/PostgreSQL** como banco de dados
+-  **CORS** configurado para aplicações frontend
+-  **Migrations** com Alembic
+-  **Type Hints** com Pydantic para validação de dados
+-  **UUID** para identificadores únicos
 
-## 📋 Pré-requisitos
+## Pré-requisitos
 
 - Python 3.9+
 - PostgreSQL 13+
-- AWS Account (para SQS e S3)
+- AWS Account (para SQS, S3 e RDS)
 - pip ou poetry
 
-## 🔧 Instalação
+## Instalação
 
 ### 1. Clone o repositório
 
@@ -82,7 +82,7 @@ python run.py
 
 A API estará disponível em: **http://localhost:8000**
 
-## 📚 Documentação da API
+## Documentação da API
 
 Após iniciar o servidor, acesse a documentação interativa:
 
@@ -91,9 +91,9 @@ Após iniciar o servidor, acesse a documentação interativa:
 
 ## 🔌 Endpoints Principais
 
-### Jobs (Vagas)
+### Jobs
 
-#### Criar uma nova vaga
+#### Criar uma novo job
 ```http
 POST /job
 Content-Type: application/json
@@ -115,12 +115,12 @@ Content-Type: application/json
 }
 ```
 
-#### Obter detalhes de uma vaga
+#### Obter detalhes de um job
 ```http
 GET /job/{job_id}
 ```
 
-#### Listar candidatos de uma vaga
+#### Listar candidatos de um job
 ```http
 GET /job/{job_id}/candidates
 ```
@@ -140,7 +140,7 @@ GET /job/{job_id}/candidates
 ]
 ```
 
-## 🏗️ Estrutura do Projeto
+## Estrutura do Projeto
 
 ```
 candidate-processor-api/
@@ -175,9 +175,9 @@ candidate-processor-api/
 └── .env                  # Variáveis de ambiente
 ```
 
-## 💾 Modelos de Dados
+## Modelos de Dados
 
-### Job (Vaga)
+### Job
 - `id`: UUID (Primary Key)
 - `filename`: String
 - `status`: PENDING | PROCESSING | COMPLETED | FAILED
@@ -186,7 +186,7 @@ candidate-processor-api/
 - `created_at`: DateTime
 - `completed_at`: DateTime (nullable)
 
-### Candidates (Candidatos)
+### Candidates
 - `id`: UUID (Primary Key)
 - `job_id`: UUID (Foreign Key)
 - `name`: String
@@ -196,7 +196,7 @@ candidate-processor-api/
 - `created_at`: DateTime
 - **Constraint**: Unique(job_id, email)
 
-## 🔌 Integração AWS
+## Integração AWS
 
 ### S3 - Presigned URLs
 Gera URLs assinadas para upload seguro de arquivos:
@@ -223,13 +223,13 @@ response = receive_message(queue_url)
 delete_message(queue_url, receipt_handle)
 ```
 
-## 🛡️ CORS
+## CORS
 
 A API está configurada para aceitar requisições de:
 - `http://localhost:5173` (desenvolvimento frontend)
 - URL definida em `FRONT_URL` (produção)
 
-## 📝 Migrations com Alembic
+## Migrations com Alembic
 
 ### Criar uma nova migration
 ```bash
@@ -246,32 +246,7 @@ alembic upgrade head
 alembic downgrade -1
 ```
 
-## 🚢 Deploy
-
-### Docker (exemplo)
-
-```dockerfile
-FROM python:3.11-slim
-
-WORKDIR /app
-
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-COPY . .
-
-CMD ["python", "run.py"]
-```
-
-## 🧪 Testes
-
-Para adicionar testes ao projeto:
-
-```bash
-pip install pytest pytest-asyncio httpx
-```
-
-## 📦 Dependências Principais
+## Dependências Principais
 
 - **FastAPI**: Framework web moderno
 - **SQLAlchemy**: ORM para banco de dados
@@ -281,7 +256,7 @@ pip install pytest pytest-asyncio httpx
 - **psycopg**: Driver PostgreSQL
 - **python-dotenv**: Gerenciamento de variáveis de ambiente
 
-## 🔐 Variáveis de Ambiente
+## Variáveis de Ambiente
 
 | Variável | Descrição |
 |----------|-----------|
@@ -298,22 +273,3 @@ pip install pytest pytest-asyncio httpx
 ## 📄 Licença
 
 Este projeto está sob licença MIT. Veja o arquivo LICENSE para mais detalhes.
-
-## 👤 Autor
-
-**Luis Gabriel Santos**
-- GitHub: [@LuisG-santos](https://github.com/LuisG-santos)
-
-## 🤝 Contribuindo
-
-Contribuições são bem-vindas! Por favor:
-
-1. Faça um Fork do projeto
-2. Crie uma branch para sua feature (`git checkout -b feature/AmazingFeature`)
-3. Commit suas mudanças (`git commit -m 'Add some AmazingFeature'`)
-4. Push para a branch (`git push origin feature/AmazingFeature`)
-5. Abra um Pull Request
-
-## 📞 Suporte
-
-Para dúvidas ou problemas, abra uma issue no repositório: [Issues](https://github.com/LuisG-santos/candidate-processor-api/issues)
