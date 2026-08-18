@@ -1,275 +1,375 @@
 # Candidate Processor API
 
-Uma API para processamento e gerenciamento de candidatos em processos de recrutamento. Desenvolvida com **FastAPI**, integrada com **AWS** (S3 e SQS) e utilizando **RDS/PostgreSQL** para persistência de dados.
+Backend da aplicação **Candidate Processor**, desenvolvida como projeto de aprendizado para explorar a construção de uma API com Python/FastAPI e a integração entre diferentes serviços da AWS.
 
-## Características
+A aplicação recebe arquivos CSV contendo dados e notas de candidatos. O processamento é realizado de forma assíncrona e, ao final, os candidatos que atingiram a nota mínima são disponibilizados pela API.
 
--  **API RESTful** completa para gestão de vagas e candidatos
--  **Integração AWS S3** para armazenamento de documentos
--  **Fila de Processamento (SQS)** para processamento assíncrono
--  **RDS/PostgreSQL** como banco de dados
--  **CORS** configurado para aplicações frontend
--  **Migrations** com Alembic
--  **Type Hints** com Pydantic para validação de dados
--  **UUID** para identificadores únicos
+## Arquitetura
 
-## Pré-requisitos
+O backend foi estruturado utilizando uma separação entre rotas, controllers, services, repositories, schemas e models.
 
-- Python 3.9+
-- PostgreSQL 13+
-- AWS Account (para SQS, S3 e RDS)
-- pip ou poetry
+```text
+Frontend
+   │
+   │ POST /job
+   ▼
+FastAPI
+   │
+   ├── Cria Job
+   │      │
+   │      └── PostgreSQL / RDS
+   │
+   └── Gera Presigned URL
+             │
+             ▼
+            S3
+             │
+             │ ObjectCreated
+             ▼
+            SQS
+             │
+             ▼
+           Lambda
+             │
+             ├── Lê CSV do S3
+             ├── Processa candidatos
+             └── Persiste resultados
+                    │
+                    ▼
+               PostgreSQL / RDS
+```
+
+## Fluxo de processamento
+
+### 1. Criação do Job
+
+O frontend envia apenas o nome do arquivo para:
+
+```http
+POST /job
+```
+
+A API cria um Job no banco de dados e gera uma chave para o arquivo no S3:
+
+```text
+jobs/{job_id}/input/{filename}
+```
+
+Em seguida, a API gera uma **Presigned URL** para upload do arquivo.
+
+A API não recebe o arquivo diretamente.
+
+### 2. Upload para o S3
+
+A Presigned URL permite que o frontend faça o upload diretamente para o Amazon S3.
+
+Isso evita que o arquivo precise passar pela API antes de chegar ao armazenamento.
+
+> A implementação do upload e a integração do frontend com a Presigned URL estão documentadas no repositório do frontend.
+
+### 3. Processamento assíncrono
+
+Após o arquivo ser armazenado no S3, um evento de criação de objeto envia uma mensagem para uma fila Amazon SQS.
+
+A fila desacopla o upload do processamento.
+
+```text
+S3
+ │
+ │ ObjectCreated
+ ▼
+SQS
+ │
+ ▼
+Lambda
+```
+
+A Lambda então:
+
+1. recebe a mensagem;
+2. identifica o arquivo no S3;
+3. baixa o CSV;
+4. processa os candidatos;
+5. persiste os resultados no PostgreSQL;
+6. atualiza o Job.
+
+### 4. Consulta do resultado
+
+O frontend consulta o status do Job:
+
+```http
+GET /job/{job_id}
+```
+
+Após o processamento, os candidatos podem ser recuperados através de:
+
+```http
+GET /job/{job_id}/candidates
+```
+
+---
+
+# Estrutura da aplicação
+
+```text
+candidate-processor-api/
+│
+├── app/
+│   ├── aws/
+│   │   └── s3.py
+│   ├── config/
+│   │   └── settings.py
+│   ├── controllers/
+│   │   ├── candidates.py
+│   │   └── job.py
+│   ├── database/
+│   │   ├── engine.py
+│   │   └── url.py
+│   ├── dependencies/
+│   │   ├── candidates.py
+│   │   └── job.py
+│   ├── models/
+│   │   ├── base.py
+│   │   ├── candidates.py
+│   │   └── job.py
+│   ├── repositories/
+│   │   ├── candidates.py
+│   │   └── job.py
+│   ├── routes/
+│   │   └── job.py
+│   ├── schemas/
+│   │   ├── candidates.py
+│   │   └── job.py
+│   ├── services/
+│   │   └── job.py
+│   └── main.py
+│
+├── alembic/
+├── requirements.txt
+└── run.py
+```
+
+### Responsabilidade das camadas
+
+**Routes** — definem os endpoints HTTP e recebem as requisições.
+
+**Controllers** — fazem a intermediação entre as rotas e a camada de serviço.
+
+**Services** — concentram a lógica de negócio.
+
+**Repositories** — responsáveis pelo acesso aos dados persistidos.
+
+**Models** — representam as entidades do banco através do ORM.
+
+**Schemas** — definem os modelos de entrada e saída utilizando Pydantic.
+
+**AWS** — contém as integrações da aplicação com os serviços da AWS.
+
+---
+
+# AWS
+
+## Amazon S3
+
+Utilizado para armazenar os arquivos CSV enviados para processamento.
+
+A API gera uma Presigned URL utilizando o AWS SDK (Boto3), permitindo que o cliente faça um upload `PUT` diretamente para o bucket.
+
+A URL possui tempo de expiração e é associada a uma chave específica do Job.
+
+## Amazon SQS
+
+Utilizado como fila para desacoplar o upload do processamento.
+
+Quando um novo arquivo é criado no S3, uma notificação é enviada para a fila.
+
+Isso permite que o processamento aconteça de forma assíncrona.
+
+## AWS Lambda
+
+A Lambda é responsável pelo processamento dos arquivos recebidos através da fila.
+
+Ela recupera o objeto armazenado no S3, processa os candidatos e persiste os resultados no banco de dados.
+
+## Amazon RDS
+
+Utilizado como banco de dados PostgreSQL para persistir:
+
+- Jobs
+- Candidatos
+- Status do processamento
+- Quantidade total de candidatos
+- Quantidade de candidatos aprovados
+- Datas de criação e conclusão
+
+## Amazon EC2
+
+Utilizado para hospedar a API FastAPI em produção.
+
+## IAM
+
+As permissões entre os serviços AWS são controladas através de IAM.
+
+A Lambda, por exemplo, possui permissões específicas para acessar os recursos necessários durante o processamento.
+
+---
+
+# Endpoints
+
+## Criar Job
+
+```http
+POST /job
+```
+
+### Request
+
+```json
+{
+  "filename": "candidatos.csv"
+}
+```
+
+### Response
+
+```json
+{
+  "id": "uuid",
+  "filename": "candidatos.csv",
+  "upload_url": "https://..."
+}
+```
+
+A resposta contém a Presigned URL utilizada pelo frontend para enviar o arquivo diretamente ao S3.
+
+## Consultar Job
+
+```http
+GET /job/{job_id}
+```
+
+Exemplo:
+
+```json
+{
+  "id": "uuid",
+  "filename": "candidatos.csv",
+  "status": "COMPLETED",
+  "total_candidates": 100,
+  "approved_candidates": 35,
+  "created_at": "...",
+  "completed_at": "..."
+}
+```
+
+Estados possíveis:
+
+```text
+PENDING
+PROCESSING
+COMPLETED
+FAILED
+```
+
+## Consultar candidatos
+
+```http
+GET /job/{job_id}/candidates
+```
+
+Retorna os candidatos associados ao Job.
+
+---
+
+# Tecnologias
+
+### Backend
+
+- Python
+- FastAPI
+- SQLAlchemy
+- Pydantic
+- Alembic
+- PostgreSQL
+- Boto3
+
+### AWS
+
+- Amazon S3
+- Amazon SQS
+- AWS Lambda
+- Amazon RDS
+- Amazon EC2
+- IAM
+
+### Infraestrutura
+
+- Nginx
+- HTTPS
+- Route 53
+
+---
+
+# Configuração local
+
+## Requisitos
+
+- Python 3.14+
+- PostgreSQL
+- Conta AWS
 
 ## Instalação
-
-### 1. Clone o repositório
 
 ```bash
 git clone https://github.com/LuisG-santos/candidate-processor-api.git
 cd candidate-processor-api
-```
 
-### 2. Crie um ambiente virtual
+python -m venv .venv
+source .venv/bin/activate
 
-```bash
-python -m venv venv
-
-# Linux/Mac
-source venv/bin/activate
-
-# Windows
-venv\Scripts\activate
-```
-
-### 3. Instale as dependências
-
-```bash
 pip install -r requirements.txt
 ```
 
-### 4. Configure as variáveis de ambiente
+Configure as variáveis de ambiente necessárias em um arquivo `.env`.
 
-Crie um arquivo `.env` na raiz do projeto:
-
-```env
-# Database
-DATABASE_HOST=localhost
-DATABASE_PORT=5432
-DATABASE_USER=postgres
-DATABASE_PASSWORD=sua_senha
-DATABASE_NAME=candidate_processor
-
-# AWS
-AWS_PROFILE=default
-AWS_REGION=us-east-1
-BUCKET_NAME=seu-bucket-name
-
-# Frontend
-FRONT_URL=http://localhost:5173
-```
-
-### 5. Execute as migrations
+Execute as migrations:
 
 ```bash
 alembic upgrade head
 ```
 
-### 6. Inicie o servidor
+Inicie a aplicação:
 
 ```bash
 python run.py
 ```
 
-A API estará disponível em: **http://localhost:8000**
+A API estará disponível em:
 
-## Documentação da API
-
-Após iniciar o servidor, acesse a documentação interativa:
-
-- **Swagger UI**: http://localhost:8000/docs
-- **ReDoc**: http://localhost:8000/redoc
-
-## 🔌 Endpoints Principais
-
-### Jobs
-
-#### Criar uma novo job
-```http
-POST /job
-Content-Type: application/json
-
-{
-  "filename": "job_123.csv"
-}
+```text
+http://localhost:8000
 ```
 
-**Response (201)**
-```json
-{
-  "id": "550e8400-e29b-41d4-a716-446655440000",
-  "filename": "job_123.csv",
-  "status": "PENDING",
-  "total_candidates": 0,
-  "approved_candidates": 0,
-  "created_at": "2026-08-17T10:30:00"
-}
+Documentação interativa:
+
+```text
+http://localhost:8000/docs
 ```
 
-#### Obter detalhes de um job
-```http
-GET /job/{job_id}
-```
+---
 
-#### Listar candidatos de um job
-```http
-GET /job/{job_id}/candidates
-```
+# Objetivo do projeto
 
-**Response (200)**
-```json
-[
-  {
-    "id": "550e8400-e29b-41d4-a716-446655440001",
-    "job_id": "550e8400-e29b-41d4-a716-446655440000",
-    "name": "João Silva",
-    "email": "joao@example.com",
-    "phone": "11999999999",
-    "note": 8,
-    "created_at": "2026-08-17T10:30:00"
-  }
-]
-```
+Este projeto foi desenvolvido como uma experiência prática para estudar:
 
-## Estrutura do Projeto
+- Desenvolvimento de APIs com FastAPI
+- Arquitetura em camadas
+- Processamento assíncrono
+- Message queues
+- Presigned URLs
+- Integração entre serviços AWS
+- IAM e permissões
+- Persistência com PostgreSQL
+- Deploy de uma aplicação backend na AWS
 
-```
-candidate-processor-api/
-├── app/
-│   ├── aws/                 # Integração AWS
-│   │   ├── s3.py           # Upload para S3
-│   │   └── sqs.py          # Fila de processamento
-│   ├── config/
-│   │   └── settings.py     # Configurações da aplicação
-│   ├── controllers/        # Lógica de negócio
-│   │   ├── job.py
-│   │   └── candidates.py
-│   ├── database/
-│   │   ├── engine.py       # Engine do SQLAlchemy
-│   │   └── url.py          # Configuração da URL do BD
-│   ├── models/             # Modelos ORM
-│   │   ├── job.py
-│   │   ├── candidates.py
-│   │   └── base.py
-│   ├── routes/             # Endpoints da API
-│   │   └── job.py
-│   ├── schemas/            # Validação com Pydantic
-│   │   ├── job.py
-│   │   └── candidates.py
-│   ├── dependencies/       # Dependency Injection
-│   │   ├── job.py
-│   │   └── candidates.py
-│   └── main.py            # Aplicação FastAPI
-├── alembic/               # Migrations
-├── requirements.txt       # Dependências
-├── run.py                # Entry point
-└── .env                  # Variáveis de ambiente
-```
-
-## Modelos de Dados
-
-### Job
-- `id`: UUID (Primary Key)
-- `filename`: String
-- `status`: PENDING | PROCESSING | COMPLETED | FAILED
-- `total_candidates`: Integer
-- `approved_candidates`: Integer
-- `created_at`: DateTime
-- `completed_at`: DateTime (nullable)
-
-### Candidates
-- `id`: UUID (Primary Key)
-- `job_id`: UUID (Foreign Key)
-- `name`: String
-- `email`: String
-- `phone`: String
-- `note`: Integer
-- `created_at`: DateTime
-- **Constraint**: Unique(job_id, email)
-
-## Integração AWS
-
-### S3 - Presigned URLs
-Gera URLs assinadas para upload seguro de arquivos:
-
-```python
-from app.aws.s3 import generate_upload_url
-
-url = generate_upload_url("bucket-name", "path/to/file.csv")
-```
-
-### SQS - Fila de Mensagens
-Gerencia a fila de processamento de candidatos:
-
-```python
-from app.aws.sqs import send_message, receive_message, delete_message
-
-# Enviar mensagem
-send_message(queue_url, message_body)
-
-# Receber mensagem
-response = receive_message(queue_url)
-
-# Deletar mensagem
-delete_message(queue_url, receipt_handle)
-```
-
-## CORS
-
-A API está configurada para aceitar requisições de:
-- `http://localhost:5173` (desenvolvimento frontend)
-- URL definida em `FRONT_URL` (produção)
-
-## Migrations com Alembic
-
-### Criar uma nova migration
-```bash
-alembic revision --autogenerate -m "Descrição da mudança"
-```
-
-### Aplicar migrations
-```bash
-alembic upgrade head
-```
-
-### Reverter migration
-```bash
-alembic downgrade -1
-```
-
-## Dependências Principais
-
-- **FastAPI**: Framework web moderno
-- **SQLAlchemy**: ORM para banco de dados
-- **Pydantic**: Validação de dados
-- **Alembic**: Migrations de banco de dados
-- **boto3**: SDK AWS
-- **psycopg**: Driver PostgreSQL
-- **python-dotenv**: Gerenciamento de variáveis de ambiente
-
-## Variáveis de Ambiente
-
-| Variável | Descrição |
-|----------|-----------|
-| `DATABASE_HOST` | Host do PostgreSQL |
-| `DATABASE_PORT` | Porta do PostgreSQL (padrão: 5432) |
-| `DATABASE_USER` | Usuário PostgreSQL |
-| `DATABASE_PASSWORD` | Senha PostgreSQL |
-| `DATABASE_NAME` | Nome do banco de dados |
-| `AWS_PROFILE` | Perfil AWS (default: default) |
-| `AWS_REGION` | Região AWS |
-| `BUCKET_NAME` | Nome do bucket S3 |
-| `FRONT_URL` | URL do frontend para CORS |
-
-## 📄 Licença
-
-Este projeto está sob licença MIT. Veja o arquivo LICENSE para mais detalhes.
+O objetivo principal não é representar uma arquitetura de produção completa, mas explorar na prática como diferentes componentes de uma aplicação podem ser integrados utilizando serviços gerenciados da AWS.
